@@ -1,6 +1,5 @@
 ### README.md
 
-```markdown
 # RAG Chatbot Deployment Showcase
 
 ## Project Description
