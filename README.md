@@ -1,99 +1,168 @@
-### README.md
 
-# RAG Chatbot Deployment Showcase
+```markdown
+# Rag-chatbot Deployment Guide
 
-## Project Description
-This project demonstrates how to deploy a Retrieval-Augmented Generation (RAG) chatbot to AWS using various services and tools like EC2, Lambda, S3, API Gateway, Docker, and Terraform. The chatbot uses advanced language models for generating responses based on uploaded documents.
+This guide provides step-by-step instructions for deploying the `Rag-chatbot` application to AWS using Amazon ECS and Fargate, automated with Apache Airflow.
 
-## Technologies Used
-- AWS (EC2, Lambda, S3, API Gateway)
-- Docker
-- Streamlit
-- Python
-- LangChain
-- Hugging Face Transformers
-- FAISS
-- Terraform
-- GitHub Actions
+## Prerequisites
 
-## Getting Started
+1. **AWS Account**: Ensure you have an active AWS account.
+2. **AWS CLI**: Install and configure the AWS CLI.
+    ```sh
+    pip install awscli
+    aws configure
+    ```
+3. **Docker**: Install Docker to build and test your container locally.
+4. **Apache Airflow**: Ensure you have Apache Airflow installed and running. Follow the [official installation guide](https://airflow.apache.org/docs/apache-airflow/stable/installation/index.html) if you need help setting it up.
 
-### Prerequisites
-- AWS Account
-- Terraform installed
-- Docker installed
-- GitHub Account
-- Hugging Face API Token
+## Step 1: Clone the Repository
 
-### Setup Instructions
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/aws-rag-chatbot-deployment-showcase.git
-   cd aws-rag-chatbot-deployment-showcase
-   ```
-
-2. **Set up AWS credentials:**
-   Ensure your AWS credentials are configured. You can do this by setting up the `~/.aws/credentials` file or using environment variables.
-
-3. **Deploy the infrastructure using Terraform:**
-   ```bash
-   cd infrastructure
-   terraform init
-   terraform apply
-   ```
-
-4. **Build and push Docker image:**
-   ```bash
-   cd chatbot
-   docker build -t your-dockerhub-username/chatbot:latest .
-   docker push your-dockerhub-username/chatbot:latest
-   ```
-
-5. **Deploy the chatbot using GitHub Actions:**
-   - Ensure you have set up secrets in your GitHub repository (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `HUGGINGFACE_API_TOKEN`).
-   - Push changes to the repository to trigger the CI/CD pipeline.
-
-### Usage
-- Access the chatbot via the provided API Gateway endpoint.
-- (Optional) Open the web interface (if implemented) to interact with the chatbot.
-
-## Project Structure
-```
-aws-rag-chatbot-deployment-showcase/
-├── chatbot/
-│   ├── app.py
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── ...
-├── infrastructure/
-│   ├── main.tf
-│   ├── variables.tf
-│   └── ...
-├── .github/
-│   └── workflows/
-│       ├── build.yml
-│       └── deploy.yml
-├── frontend/ (optional)
-│   ├── index.html
-│   └── ...
-├── README.md
-└── ...
+Clone the GitHub repository to your local machine:
+```sh
+git clone https://github.com/aminzadenoori/Rag-chatbot.git
+cd Rag-chatbot
 ```
 
-## Documentation
+## Step 2: Add Your ECS Task Definition
 
-### Chatbot Development
-The chatbot is developed using Streamlit and LangChain, leveraging Hugging Face models for conversational capabilities. It supports document upload (PDF and TXT) and processes them to generate context-aware responses.
+Create an `ecs-task-definition.json` file with your ECS task definition and place it in your GitHub repository (`Rag-chatbot`):
 
-### Dockerization
-The application is containerized using Docker. The `Dockerfile` includes the necessary instructions to build the Docker image.
+```json
+{
+  "family": "rag-chatbot-task",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "rag-chatbot",
+      "image": "<your-account-id>.dkr.ecr.<your-region>.amazonaws.com/rag-chatbot:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8501,
+          "hostPort": 8501
+        }
+      ]
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+}
+```
 
-### AWS Infrastructure Setup
-Terraform scripts are used to provision AWS resources like EC2, Lambda, S3, and API Gateway. These scripts ensure the proper configuration and security settings for each service.
+## Step 3: Define the Airflow DAG
 
-### CI/CD with GitHub Actions
-GitHub Actions workflows are set up for continuous integration and continuous deployment. The workflows handle building the Docker image, running tests, and deploying the application to AWS.
+Create a new DAG file in your Airflow DAGs directory, e.g., `deploy_rag_chatbot.py`, with the following content:
 
-### Streamlit Application
-The Streamlit app allows users to upload documents, select a language model, and interact with the chatbot. It also provides feedback collection and answer generation features with performance evaluation.
+```python
+from airflow import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime, timedelta
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+dag = DAG(
+    'deploy_rag_chatbot',
+    default_args=default_args,
+    description='A DAG to deploy Rag-chatbot to AWS',
+    schedule_interval=timedelta(days=1),
+    start_date=datetime(2023, 7, 21),
+    catchup=False,
+)
+
+# Step 1: Clone the repository
+clone_repo = BashOperator(
+    task_id='clone_repo',
+    bash_command='git clone https://github.com/aminzadenoori/Rag-chatbot.git /tmp/Rag-chatbot',
+    dag=dag,
+)
+
+# Step 2: Build Docker image
+build_docker_image = BashOperator(
+    task_id='build_docker_image',
+    bash_command='cd /tmp/Rag-chatbot && docker build -t rag-chatbot .',
+    dag=dag,
+)
+
+# Step 3: Create ECR repository
+create_ecr_repo = BashOperator(
+    task_id='create_ecr_repo',
+    bash_command='aws ecr create-repository --repository-name rag-chatbot || true',
+    dag=dag,
+)
+
+# Step 4: Authenticate Docker to ECR
+authenticate_docker = BashOperator(
+    task_id='authenticate_docker',
+    bash_command='$(aws ecr get-login --no-include-email --region us-east-1)',
+    dag=dag,
+)
+
+# Step 5: Tag and push Docker image to ECR
+push_docker_image = BashOperator(
+    task_id='push_docker_image',
+    bash_command=(
+        'docker tag rag-chatbot:latest <your-account-id>.dkr.ecr.<your-region>.amazonaws.com/rag-chatbot:latest && '
+        'docker push <your-account-id>.dkr.ecr.<your-region>.amazonaws.com/rag-chatbot:latest'
+    ),
+    dag=dag,
+)
+
+# Step 6: Register ECS Task Definition
+register_task_definition = BashOperator(
+    task_id='register_task_definition',
+    bash_command='aws ecs register-task-definition --cli-input-json file:///tmp/Rag-chatbot/ecs-task-definition.json',
+    dag=dag,
+)
+
+# Step 7: Create ECS Service
+create_ecs_service = BashOperator(
+    task_id='create_ecs_service',
+    bash_command=(
+        'aws ecs create-service --cluster rag-chatbot-cluster --service-name rag-chatbot-service --task-definition rag-chatbot-task '
+        '--desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[<your-subnet-id>],securityGroups=[<your-security-group-id>],assignPublicIp=ENABLED}"'
+    ),
+    dag=dag,
+)
+
+clone_repo >> build_docker_image >> create_ecr_repo >> authenticate_docker >> push_docker_image >> register_task_definition >> create_ecs_service
+```
+
+## Step 4: Configure Your Airflow Environment
+
+1. **Place the DAG**: Ensure the `deploy_rag_chatbot.py` file is placed in the Airflow DAGs directory.
+2. **Set Environment Variables**: Make sure that your environment variables, such as AWS credentials and region information, are set correctly in the environment where Airflow is running.
+
+## Step 5: Run the DAG
+
+1. **Access the Airflow Web UI**: Open your Airflow web UI.
+2. **Enable the DAG**: Enable the `deploy_rag_chatbot` DAG.
+3. **Trigger the DAG**: Manually trigger the DAG to start the deployment process.
+
+## Summary of AWS Services Used
+
+1. **Amazon Elastic Container Registry (ECR)**: To store your Docker images.
+2. **Amazon Elastic Container Service (ECS)**: To manage your Docker containers.
+3. **AWS Fargate**: To run your containers without managing servers.
+4. **Amazon Virtual Private Cloud (VPC)**: To define your network environment.
+5. **AWS Identity and Access Management (IAM)**: To manage permissions and roles.
+
+## Additional Steps
+
+- **Monitoring**: Use the Airflow UI to monitor the status of each task.
+- **Security**: Ensure that your AWS credentials are managed securely.
+- **Customization**: Modify the DAG and Bash commands as needed to fit your specific deployment environment and requirements.
+
+By following these steps, you should be able to successfully deploy your `Rag-chatbot` application to AWS, leveraging the power of Apache Airflow for orchestration.
+```
+
+Save this content in a `README.md` file in your repository. This will provide clear instructions on how to deploy your `Rag-chatbot` application to AWS using Apache Airflow for automation.
