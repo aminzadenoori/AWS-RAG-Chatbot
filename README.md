@@ -1,5 +1,4 @@
 
-```markdown
 # Rag-chatbot Deployment Guide
 
 This guide provides step-by-step instructions for deploying the `Rag-chatbot` application to AWS using Amazon ECS and Fargate, automated with Apache Airflow.
