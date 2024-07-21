@@ -162,4 +162,3 @@ clone_repo >> build_docker_image >> create_ecr_repo >> authenticate_docker >> pu
 - **Customization**: Modify the DAG and Bash commands as needed to fit your specific deployment environment and requirements.
 
 By following these steps, you should be able to successfully deploy your `Rag-chatbot` application to AWS, leveraging the power of Apache Airflow for orchestration.
-```
