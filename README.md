@@ -163,5 +163,3 @@ clone_repo >> build_docker_image >> create_ecr_repo >> authenticate_docker >> pu
 
 By following these steps, you should be able to successfully deploy your `Rag-chatbot` application to AWS, leveraging the power of Apache Airflow for orchestration.
 ```
-
-Save this content in a `README.md` file in your repository. This will provide clear instructions on how to deploy your `Rag-chatbot` application to AWS using Apache Airflow for automation.
